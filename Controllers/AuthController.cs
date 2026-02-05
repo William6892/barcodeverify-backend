@@ -1,50 +1,50 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using BarcodeShippingSystem.DTOs;
-using BarcodeShippingSystem.Services;
+﻿    using Microsoft.AspNetCore.Mvc;
+    using BarcodeShippingSystem.DTOs;
+    using BarcodeShippingSystem.Services;
 
-namespace BarcodeShippingSystem.Controllers
-{
-    [Route("api/[controller]")]
-    [ApiController]
-    public class AuthController : ControllerBase
+    namespace BarcodeShippingSystem.Controllers
     {
-        private readonly IAuthService _authService;
-
-        public AuthController(IAuthService authService)
+        [Route("api/[controller]")]
+        [ApiController]
+        public class AuthController : ControllerBase
         {
-            _authService = authService;
-        }
+            private readonly IAuthService _authService;
 
-        [HttpPost("login")]
-        public async Task<IActionResult> Login([FromBody] LoginDto loginDto)
-        {
-            try
+            public AuthController(IAuthService authService)
             {
-                var result = await _authService.LoginAsync(loginDto);
-                return Ok(result);
+                _authService = authService;
             }
-            catch (UnauthorizedAccessException)
-            {
-                return Unauthorized(new { message = "Credenciales inválidas" });
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(new { message = ex.Message });
-            }
-        }
 
-        [HttpPost("register")]
-        public async Task<IActionResult> Register([FromBody] RegisterDto registerDto)
-        {
-            try
+            [HttpPost("login")]
+            public async Task<IActionResult> Login([FromBody] LoginDto loginDto)
             {
-                var result = await _authService.RegisterAsync(registerDto);
-                return Ok(result);
+                try
+                {
+                    var result = await _authService.LoginAsync(loginDto);
+                    return Ok(result);
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    return Unauthorized(new { message = "Credenciales inválidas" });
+                }
+                catch (Exception ex)
+                {
+                    return BadRequest(new { message = ex.Message });
+                }
             }
-            catch (Exception ex)
+
+            [HttpPost("register")]
+            public async Task<IActionResult> Register([FromBody] RegisterDto registerDto)
             {
-                return BadRequest(new { message = ex.Message });
+                try
+                {
+                    var result = await _authService.RegisterAsync(registerDto);
+                    return Ok(result);
+                }
+                catch (Exception ex)
+                {
+                    return BadRequest(new { message = ex.Message });
+                }
             }
         }
     }
-}
