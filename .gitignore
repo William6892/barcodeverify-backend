@@ -4,4 +4,5 @@ obj/
 .vscode/
 *.user
 *.suo
-appsettings.Development.json
+appsettings.Development.json"appsettings.json" 
+"appsettings.*.json" 
