@@ -26,7 +26,6 @@ appsettings.Local.json
 
 # Secrets
 appsettings.Secrets.json
-appsettings.json
 
 # IDE
 .idea/
