@@ -1,0 +1,35 @@
+# ASP.NET Core
+bin/
+obj/
+**/obj/
+**/bin/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+.vscode/
+
+# NuGet
+packages/
+*.nupkg
+.nuget/
+
+# Local development
+appsettings.Development.json
+appsettings.Local.json
+
+# Compiled output
+**/Debug/
+**/Release/
+**/publish/
+
+# Secrets
+appsettings.Secrets.json
+
+# IDE
+.idea/
+
+# Temp
+*.tmp
+*.temp
