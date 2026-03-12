@@ -11,7 +11,7 @@ namespace BarcodeShippingSystem.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize] // Requiere autenticación para todos los endpoints
+    [Authorize]
     public class TransportCompanyController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
@@ -27,7 +27,7 @@ namespace BarcodeShippingSystem.Controllers
 
         // GET: api/TransportCompany
         [HttpGet]
-        [AllowAnonymous] // Permitir acceso público a la lista
+        [AllowAnonymous]
         public async Task<IActionResult> GetTransportCompanies([FromQuery] bool activeOnly = true)
         {
             try
@@ -66,42 +66,31 @@ namespace BarcodeShippingSystem.Controllers
         {
             try
             {
-                // Obtener el usuario actual del token JWT
                 var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 var userEmail = User.FindFirst(ClaimTypes.Email)?.Value;
                 var userName = User.FindFirst(ClaimTypes.Name)?.Value;
 
-                // Validar que el usuario está autenticado
                 if (string.IsNullOrEmpty(userId))
-                {
                     return Unauthorized(new { message = "Usuario no autenticado" });
-                }
 
-                // Verificar si ya existe una transportadora con la misma placa
                 var existingCompany = await _context.TransportCompanies
-                    .FirstOrDefaultAsync(tc => tc.LicensePlate.ToLower() == dto.LicensePlate.ToLower());
+                    .FirstOrDefaultAsync(tc => tc.Name.ToLower() == dto.Name.ToLower());
 
                 if (existingCompany != null)
                 {
                     return Conflict(new
                     {
-                        message = "Ya existe una transportadora con esta placa",
+                        message = "Ya existe una transportadora con este nombre",
                         existingCompany = new
                         {
                             existingCompany.Id,
                             existingCompany.Name,
-                            existingCompany.LicensePlate,
                             existingCompany.IsActive
                         }
                     });
                 }
 
-                // Crear la transportadora
                 var company = await _transportCompanyService.CreateAsync(dto);
-
-                // Opcional: Registrar quién creó esta transportadora
-                // Podrías agregar campos CreatedByUserId y CreatedByUserEmail al modelo
-                // o crear una tabla de logs si necesitas tracking
 
                 return CreatedAtAction(nameof(GetTransportCompany), new { id = company.Id }, new
                 {
@@ -111,17 +100,9 @@ namespace BarcodeShippingSystem.Controllers
                     {
                         company.Id,
                         company.Name,
-                        company.Phone,
-                        company.DriverName,
-                        company.LicensePlate,
                         company.IsActive,
                         company.CreatedAt,
-                        createdBy = new
-                        {
-                            userId,
-                            userName,
-                            userEmail
-                        }
+                        createdBy = new { userId, userName, userEmail }
                     }
                 });
             }
@@ -138,17 +119,16 @@ namespace BarcodeShippingSystem.Controllers
 
         // POST: api/TransportCompany
         [HttpPost]
-        [Authorize(Roles = "Admin")] // SOLO Admin puede usar este endpoint
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> CreateTransportCompanyAdmin([FromBody] CreateTransportCompanyDto dto)
         {
             try
             {
-                // Verificar si ya existe una transportadora con la misma placa
                 var existingCompany = await _context.TransportCompanies
-                    .FirstOrDefaultAsync(tc => tc.LicensePlate.ToLower() == dto.LicensePlate.ToLower());
+                    .FirstOrDefaultAsync(tc => tc.Name.ToLower() == dto.Name.ToLower());
 
                 if (existingCompany != null)
-                    return Conflict(new { message = "Ya existe una transportadora con esta placa" });
+                    return Conflict(new { message = "Ya existe una transportadora con este nombre" });
 
                 var company = await _transportCompanyService.CreateAsync(dto);
 
@@ -156,10 +136,7 @@ namespace BarcodeShippingSystem.Controllers
                 {
                     message = "Transportadora creada exitosamente (Admin)",
                     companyId = company.Id,
-                    company.Name,
-                    company.Phone,
-                    company.DriverName,
-                    company.LicensePlate
+                    company.Name
                 });
             }
             catch (Exception ex)
@@ -170,21 +147,11 @@ namespace BarcodeShippingSystem.Controllers
 
         // PUT: api/TransportCompany/5
         [HttpPut("{id}")]
-        [Authorize(Roles = "Admin")] // SOLO Admin puede actualizar
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateTransportCompany(int id, [FromBody] UpdateTransportCompanyDto dto)
         {
             try
             {
-                // Si se actualiza la placa, verificar que no exista otra con la misma
-                if (!string.IsNullOrEmpty(dto.LicensePlate))
-                {
-                    var existingWithSamePlate = await _context.TransportCompanies
-                        .FirstOrDefaultAsync(tc => tc.LicensePlate.ToLower() == dto.LicensePlate.ToLower() && tc.Id != id);
-
-                    if (existingWithSamePlate != null)
-                        return Conflict(new { message = "Ya existe otra transportadora con esta placa" });
-                }
-
                 var result = await _transportCompanyService.UpdateAsync(id, dto);
 
                 if (!result)
@@ -200,7 +167,7 @@ namespace BarcodeShippingSystem.Controllers
 
         // DELETE: api/TransportCompany/5
         [HttpDelete("{id}")]
-        [Authorize(Roles = "Admin")] // SOLO Admin puede eliminar
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeleteTransportCompany(int id)
         {
             try
@@ -220,7 +187,7 @@ namespace BarcodeShippingSystem.Controllers
 
         // PATCH: api/TransportCompany/5/toggle-status
         [HttpPatch("{id}/toggle-status")]
-        [Authorize(Roles = "Admin")] // SOLO Admin puede cambiar estado
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> ToggleStatus(int id)
         {
             try
@@ -231,28 +198,6 @@ namespace BarcodeShippingSystem.Controllers
                     return NotFound(new { message = "Transportadora no encontrada" });
 
                 return Ok(new { message = "Estado cambiado exitosamente" });
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, new { message = "Error interno del servidor", error = ex.Message });
-            }
-        }
-
-        // GET: api/TransportCompany/search?plate=ABC123
-        [HttpGet("search")]
-        public async Task<IActionResult> SearchByLicensePlate([FromQuery] string plate)
-        {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(plate))
-                    return BadRequest(new { message = "Debe proporcionar una placa para buscar" });
-
-                var company = await _transportCompanyService.SearchByLicensePlateAsync(plate);
-
-                if (company == null)
-                    return NotFound(new { message = "No se encontró transportadora con esa placa" });
-
-                return Ok(company);
             }
             catch (Exception ex)
             {

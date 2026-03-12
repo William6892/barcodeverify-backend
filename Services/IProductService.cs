@@ -1,4 +1,4 @@
-﻿using BarcodeShippingSystem.DTOs;
+using BarcodeShippingSystem.DTOs;
 using BarcodeShippingSystem.Models;
 
 namespace BarcodeShippingSystem.Services
@@ -29,5 +29,10 @@ namespace BarcodeShippingSystem.Services
         // Nuevos métodos para tu ScanProductDto
         Task<ScanResponseDto> ProcessScanAsync(ScanProductDto scanDto, int userId);
         Task<Dictionary<string, int>> GetShipmentCategoryCountsAsync(int shipmentId);
+
+        /// <summary>
+        /// Agrega productos por modelo/cantidad sin escanear (ej: "10 Samsung S26 Ultra", "10 audífonos")
+        /// </summary>
+        Task<ScanResponseDto> AddByModelAsync(AddProductByModelDto dto, int userId);
     }
 }

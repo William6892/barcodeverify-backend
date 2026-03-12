@@ -68,13 +68,11 @@ namespace BarcodeShippingSystem.Controllers
             if (shipment == null)
                 return NotFound(new { message = "Envío no encontrado o no está en progreso" });
 
-            // ✅ VALIDACIÓN 1: Verificar si ya existe un producto con el mismo barcode en este envío
             var existingProduct = await _context.Products
                 .FirstOrDefaultAsync(p => p.Barcode == dto.Barcode && p.ShipmentId == dto.ShipmentId);
 
             if (existingProduct != null)
             {
-                // ✅ VALIDACIÓN 2: Si el producto requiere número de serie, verificar que no se repita
                 if (!string.IsNullOrEmpty(dto.SerialNumber))
                 {
                     var existingWithSameSerial = await _context.Products
@@ -98,7 +96,6 @@ namespace BarcodeShippingSystem.Controllers
                         });
                     }
 
-                    // Si es el mismo barcode pero diferente serie, crear nuevo producto
                     var newProduct = new Product
                     {
                         Barcode = dto.Barcode,
@@ -109,7 +106,7 @@ namespace BarcodeShippingSystem.Controllers
                         Category = dto.Category ?? "Electrónica",
                         Brand = "Samsung",
                         Model = dto.Model,
-                        SerialNumber = dto.SerialNumber, // Diferente serie
+                        SerialNumber = dto.SerialNumber,
                         ShipmentId = dto.ShipmentId,
                         ScannedAt = DateTime.UtcNow,
                         ScannedByUserId = userId
@@ -119,14 +116,12 @@ namespace BarcodeShippingSystem.Controllers
                 }
                 else
                 {
-                    // Sin número de serie, incrementar cantidad
                     existingProduct.Quantity += dto.Quantity;
                     existingProduct.ScannedAt = DateTime.UtcNow;
                 }
             }
             else
             {
-                // ✅ VALIDACIÓN 3: Para productos nuevos con número de serie, verificar que no exista
                 if (!string.IsNullOrEmpty(dto.SerialNumber))
                 {
                     var existingSerial = await _context.Products
@@ -150,7 +145,6 @@ namespace BarcodeShippingSystem.Controllers
                     }
                 }
 
-                // Crear nuevo producto
                 var product = new Product
                 {
                     Barcode = dto.Barcode,
@@ -170,7 +164,6 @@ namespace BarcodeShippingSystem.Controllers
                 _context.Products.Add(product);
             }
 
-            // Actualizar operación de escaneo
             var scanOperation = await _context.ScanOperations
                 .FirstOrDefaultAsync(so => so.ShipmentId == dto.ShipmentId && so.UserId == userId && so.Status == "Active");
 
@@ -183,7 +176,6 @@ namespace BarcodeShippingSystem.Controllers
 
             await _context.SaveChangesAsync();
 
-            // Obtener conteo actualizado
             var totalAfterScan = await _context.Products
                 .Where(p => p.ShipmentId == dto.ShipmentId)
                 .SumAsync(p => p.Quantity);
@@ -218,7 +210,6 @@ namespace BarcodeShippingSystem.Controllers
             shipment.ActualDeparture = DateTime.UtcNow;
             shipment.UpdatedAt = DateTime.UtcNow;
 
-            // Finalizar operación de escaneo
             var scanOperation = await _context.ScanOperations
                 .FirstOrDefaultAsync(so => so.ShipmentId == shipmentId && so.UserId == userId && so.Status == "Active");
 
@@ -237,13 +228,10 @@ namespace BarcodeShippingSystem.Controllers
                 shipmentNumber = shipment.ShipmentNumber,
                 totalProducts = shipment.Products?.Sum(p => p.Quantity) ?? 0,
                 transportCompany = shipment.TransportCompany?.Name,
-                driver = shipment.TransportCompany?.DriverName,
-                licensePlate = shipment.TransportCompany?.LicensePlate,
                 departureTime = shipment.ActualDeparture
             });
         }
 
-        // Endpoint para envíos activos (Pending e InProgress)
         [HttpGet("active")]
         public async Task<IActionResult> GetActiveShipments()
         {
@@ -260,10 +248,7 @@ namespace BarcodeShippingSystem.Controllers
                         s.Status,
                         TransportCompany = s.TransportCompany != null ? new
                         {
-                            s.TransportCompany.Name,
-                            s.TransportCompany.DriverName,
-                            s.TransportCompany.LicensePlate,
-                            s.TransportCompany.Phone
+                            s.TransportCompany.Name
                         } : null,
                         ProductCount = s.Products.Sum(p => p.Quantity),
                         s.CreatedAt,
@@ -284,7 +269,6 @@ namespace BarcodeShippingSystem.Controllers
         {
             var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
 
-            // Verificar que la transportadora existe
             var transportCompany = await _context.TransportCompanies
                 .FirstOrDefaultAsync(tc => tc.Id == dto.TransportCompanyId);
 
@@ -311,13 +295,10 @@ namespace BarcodeShippingSystem.Controllers
                 message = "Envío creado exitosamente",
                 shipmentId = shipment.Id,
                 shipmentNumber = shipment.ShipmentNumber,
-                transportCompany = transportCompany.Name,
-                driver = transportCompany.DriverName,
-                licensePlate = transportCompany.LicensePlate
+                transportCompany = transportCompany.Name
             });
         }
 
-        // Nuevo endpoint para cambiar estado (usuarios normales)
         [HttpPatch("{id}/status")]
         public async Task<IActionResult> UpdateShipmentStatus(int id, [FromBody] UpdateShipmentStatusDto dto)
         {
@@ -328,18 +309,16 @@ namespace BarcodeShippingSystem.Controllers
             if (shipment == null)
                 return NotFound(new { message = "Envío no encontrado" });
 
-            // Validar que el usuario es el creador o es admin
             var userRole = User.FindFirst(ClaimTypes.Role)?.Value;
             if (shipment.CreatedByUserId != userId && userRole != "Admin")
                 return Forbid();
 
-            // Validar transiciones de estado
             var allowedTransitions = new Dictionary<string, string[]>
             {
                 ["Pending"] = new[] { "InProgress", "Cancelled" },
                 ["InProgress"] = new[] { "Completed", "Cancelled" },
-                ["Completed"] = new string[] { }, // No se puede cambiar
-                ["Cancelled"] = new string[] { }  // No se puede cambiar
+                ["Completed"] = new string[] { },
+                ["Cancelled"] = new string[] { }
             };
 
             if (!allowedTransitions.ContainsKey(shipment.Status) ||
@@ -355,11 +334,8 @@ namespace BarcodeShippingSystem.Controllers
             shipment.Status = dto.Status;
             shipment.UpdatedAt = DateTime.UtcNow;
 
-            // Si se completa, registrar hora de salida
             if (dto.Status == "Completed" && !shipment.ActualDeparture.HasValue)
-            {
                 shipment.ActualDeparture = DateTime.UtcNow;
-            }
 
             await _context.SaveChangesAsync();
 
@@ -386,7 +362,6 @@ namespace BarcodeShippingSystem.Controllers
                 if (shipment == null)
                     return NotFound(new { message = "Envío no encontrado" });
 
-                // Solo se puede cancelar si está en Pending o InProgress
                 if (shipment.Status != "Pending" && shipment.Status != "InProgress")
                 {
                     return BadRequest(new
@@ -398,7 +373,6 @@ namespace BarcodeShippingSystem.Controllers
                 shipment.Status = "Cancelled";
                 shipment.UpdatedAt = DateTime.UtcNow;
 
-                // Si hay una operación de escaneo activa, finalizarla
                 var activeScan = await _context.ScanOperations
                     .FirstOrDefaultAsync(so => so.ShipmentId == id && so.Status == "Active");
 
@@ -424,7 +398,6 @@ namespace BarcodeShippingSystem.Controllers
             }
         }
 
-        // NUEVO: Obtener TODOS los envíos
         [HttpGet("all")]
         public async Task<IActionResult> GetAllShipments()
         {
@@ -441,10 +414,7 @@ namespace BarcodeShippingSystem.Controllers
                         s.Status,
                         TransportCompany = s.TransportCompany != null ? new
                         {
-                            s.TransportCompany.Name,
-                            s.TransportCompany.DriverName,
-                            s.TransportCompany.LicensePlate,
-                            s.TransportCompany.Phone
+                            s.TransportCompany.Name
                         } : null,
                         ProductCount = s.Products.Sum(p => p.Quantity),
                         s.CreatedAt,
@@ -462,7 +432,6 @@ namespace BarcodeShippingSystem.Controllers
             }
         }
 
-        // NUEVO: Obtener envíos completados
         [HttpGet("completed")]
         public async Task<IActionResult> GetCompletedShipments()
         {
@@ -480,10 +449,7 @@ namespace BarcodeShippingSystem.Controllers
                         s.Status,
                         TransportCompany = s.TransportCompany != null ? new
                         {
-                            s.TransportCompany.Name,
-                            s.TransportCompany.DriverName,
-                            s.TransportCompany.LicensePlate,
-                            s.TransportCompany.Phone
+                            s.TransportCompany.Name
                         } : null,
                         ProductCount = s.Products.Sum(p => p.Quantity),
                         s.CreatedAt,
@@ -501,7 +467,6 @@ namespace BarcodeShippingSystem.Controllers
             }
         }
 
-        // NUEVO: Obtener envíos cancelados
         [HttpGet("cancelled")]
         public async Task<IActionResult> GetCancelledShipments()
         {
@@ -519,10 +484,7 @@ namespace BarcodeShippingSystem.Controllers
                         s.Status,
                         TransportCompany = s.TransportCompany != null ? new
                         {
-                            s.TransportCompany.Name,
-                            s.TransportCompany.DriverName,
-                            s.TransportCompany.LicensePlate,
-                            s.TransportCompany.Phone
+                            s.TransportCompany.Name
                         } : null,
                         ProductCount = s.Products.Sum(p => p.Quantity),
                         s.CreatedAt,
@@ -539,7 +501,6 @@ namespace BarcodeShippingSystem.Controllers
             }
         }
 
-        // NUEVO: Obtener envío por ID
         [HttpGet("{id}")]
         public async Task<IActionResult> GetShipmentById(int id)
         {
@@ -557,10 +518,7 @@ namespace BarcodeShippingSystem.Controllers
                         TransportCompany = s.TransportCompany != null ? new
                         {
                             s.TransportCompany.Id,
-                            s.TransportCompany.Name,
-                            s.TransportCompany.DriverName,
-                            s.TransportCompany.LicensePlate,
-                            s.TransportCompany.Phone
+                            s.TransportCompany.Name
                         } : null,
                         Products = s.Products.Select(p => new
                         {
@@ -594,7 +552,6 @@ namespace BarcodeShippingSystem.Controllers
             }
         }
 
-        // NUEVO: Obtener envío por número
         [HttpGet("number/{shipmentNumber}")]
         public async Task<IActionResult> GetShipmentByNumber(string shipmentNumber)
         {
@@ -611,10 +568,7 @@ namespace BarcodeShippingSystem.Controllers
                         s.Status,
                         TransportCompany = s.TransportCompany != null ? new
                         {
-                            s.TransportCompany.Name,
-                            s.TransportCompany.DriverName,
-                            s.TransportCompany.LicensePlate,
-                            s.TransportCompany.Phone
+                            s.TransportCompany.Name
                         } : null,
                         Products = s.Products.Select(p => new
                         {
@@ -642,7 +596,6 @@ namespace BarcodeShippingSystem.Controllers
             }
         }
 
-        // NUEVO: Buscar envíos con filtros
         [HttpGet("search")]
         public async Task<IActionResult> SearchShipments(
             [FromQuery] string? status,
@@ -657,29 +610,17 @@ namespace BarcodeShippingSystem.Controllers
                     .Include(s => s.Products)
                     .AsQueryable();
 
-                // Filtrar por estado
                 if (!string.IsNullOrEmpty(status))
-                {
                     query = query.Where(s => s.Status == status);
-                }
 
-                // Filtrar por número de envío
                 if (!string.IsNullOrEmpty(shipmentNumber))
-                {
                     query = query.Where(s => s.ShipmentNumber.Contains(shipmentNumber));
-                }
 
-                // Filtrar por fecha de creación (desde)
                 if (!string.IsNullOrEmpty(dateFrom) && DateTime.TryParse(dateFrom, out var fromDate))
-                {
                     query = query.Where(s => s.CreatedAt >= fromDate);
-                }
 
-                // Filtrar por fecha de creación (hasta)
                 if (!string.IsNullOrEmpty(dateTo) && DateTime.TryParse(dateTo, out var toDate))
-                {
                     query = query.Where(s => s.CreatedAt <= toDate.AddDays(1).AddSeconds(-1));
-                }
 
                 var shipments = await query
                     .OrderByDescending(s => s.CreatedAt)
@@ -690,9 +631,7 @@ namespace BarcodeShippingSystem.Controllers
                         s.Status,
                         TransportCompany = s.TransportCompany != null ? new
                         {
-                            s.TransportCompany.Name,
-                            s.TransportCompany.DriverName,
-                            s.TransportCompany.LicensePlate
+                            s.TransportCompany.Name
                         } : null,
                         ProductCount = s.Products.Sum(p => p.Quantity),
                         s.CreatedAt,
@@ -709,7 +648,6 @@ namespace BarcodeShippingSystem.Controllers
             }
         }
 
-        // NUEVO: Obtener estadísticas
         [HttpGet("stats")]
         public async Task<IActionResult> GetShipmentStats()
         {
@@ -734,8 +672,7 @@ namespace BarcodeShippingSystem.Controllers
                     TotalProducts = totalProducts,
                     AverageProductsPerShipment = averageProducts,
                     Today = await _context.Shipments.CountAsync(s => s.CreatedAt.Date == DateTime.UtcNow.Date),
-                    ThisWeek = await _context.Shipments.CountAsync(s =>
-                        s.CreatedAt >= DateTime.UtcNow.AddDays(-7)),
+                    ThisWeek = await _context.Shipments.CountAsync(s => s.CreatedAt >= DateTime.UtcNow.AddDays(-7)),
                     ThisMonth = await _context.Shipments.CountAsync(s =>
                         s.CreatedAt.Month == DateTime.UtcNow.Month &&
                         s.CreatedAt.Year == DateTime.UtcNow.Year)

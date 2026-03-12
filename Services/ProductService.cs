@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using BarcodeShippingSystem.Data;
 using BarcodeShippingSystem.DTOs;
 using BarcodeShippingSystem.Models;
@@ -493,6 +493,132 @@ namespace BarcodeShippingSystem.Services
         private string GenerateSku(string barcode)
         {
             return $"SAMSUNG-{DateTime.UtcNow:yyyyMMdd}-{barcode.Substring(Math.Max(0, barcode.Length - 6))}";
+        }
+
+        /// <summary>
+        /// Agrega productos por modelo/cantidad sin escanear (ej: "10 Samsung S26 Ultra", "10 audífonos").
+        /// Si ya existe el mismo modelo en el envío, incrementa la cantidad.
+        /// </summary>
+        public async Task<ScanResponseDto> AddByModelAsync(AddProductByModelDto dto, int userId)
+        {
+            try
+            {
+                var shipment = await _context.Shipments
+                    .Include(s => s.Products)
+                    .FirstOrDefaultAsync(s => s.Id == dto.ShipmentId);
+
+                if (shipment == null)
+                {
+                    return new ScanResponseDto
+                    {
+                        Success = false,
+                        Message = $"🚫 Envío con ID {dto.ShipmentId} no encontrado"
+                    };
+                }
+
+                if (shipment.Status != "Pending" && shipment.Status != "InProgress")
+                {
+                    return new ScanResponseDto
+                    {
+                        Success = false,
+                        Message = $"⏸️ El envío está en estado '{shipment.Status}'. Solo se pueden agregar productos a envíos Pendientes o En Progreso."
+                    };
+                }
+
+                var modelName = dto.ModelOrName.Trim();
+                var category = dto.Category?.Trim() ?? "General";
+
+                // Buscar si ya existe producto con el mismo nombre/modelo en este envío
+                var existingProduct = await _context.Products
+                    .FirstOrDefaultAsync(p => p.ShipmentId == dto.ShipmentId &&
+                        p.Name.Equals(modelName, StringComparison.OrdinalIgnoreCase));
+
+                Product product;
+
+                if (existingProduct != null)
+                {
+                    existingProduct.Quantity += dto.Quantity;
+                    existingProduct.ScannedAt = DateTime.UtcNow;
+                    existingProduct.ScannedByUserId = userId;
+                    if (!string.IsNullOrEmpty(dto.Category))
+                        existingProduct.Category = category;
+                    product = existingProduct;
+                    _context.Products.Update(product);
+                    _logger.LogInformation("Cantidad actualizada: {Name} (Total: {Quantity})", product.Name, product.Quantity);
+                }
+                else
+                {
+                    var barcode = $"MANUAL-{dto.ShipmentId}-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid().ToString("N")[..8]}";
+                    product = new Product
+                    {
+                        Barcode = barcode,
+                        Name = modelName,
+                        Description = $"Producto agregado manualmente: {modelName}",
+                        SKU = $"SHIP-{dto.ShipmentId}-{DateTime.UtcNow:yyyyMMdd}-{modelName.Replace(" ", "-")[..Math.Min(20, modelName.Length)]}",
+                        Quantity = dto.Quantity,
+                        Category = category,
+                        Brand = "General",
+                        Model = modelName,
+                        ShipmentId = dto.ShipmentId,
+                        ScannedAt = DateTime.UtcNow,
+                        ScannedByUserId = userId
+                    };
+                    _context.Products.Add(product);
+                    _logger.LogInformation("Producto agregado por modelo: {Name} x{Quantity}", product.Name, product.Quantity);
+                }
+
+                if (shipment.Status == "Pending")
+                {
+                    shipment.Status = "InProgress";
+                    shipment.StartedAt = DateTime.UtcNow;
+                    _context.Shipments.Update(shipment);
+                }
+
+                await _context.SaveChangesAsync();
+
+                var shipmentProductCount = await _context.Products
+                    .Where(p => p.ShipmentId == dto.ShipmentId)
+                    .SumAsync(p => p.Quantity);
+                var categoryCounts = await GetShipmentCategoryCountsAsync(dto.ShipmentId);
+
+                var productDto = new ProductDto
+                {
+                    Id = product.Id,
+                    Barcode = product.Barcode,
+                    Name = product.Name,
+                    Description = product.Description,
+                    SKU = product.SKU,
+                    Quantity = product.Quantity,
+                    Category = product.Category,
+                    Brand = product.Brand,
+                    Model = product.Model,
+                    ShipmentId = product.ShipmentId,
+                    ScannedAt = product.ScannedAt,
+                    ScannedByUserId = product.ScannedByUserId,
+                    ShipmentNumber = shipment.ShipmentNumber
+                };
+
+                return new ScanResponseDto
+                {
+                    Success = true,
+                    Message = $"✅ Agregados {dto.Quantity} x {product.Name}",
+                    Product = productDto,
+                    TotalScanned = shipmentProductCount,
+                    ShipmentProductCount = shipmentProductCount,
+                    ProductName = product.Name,
+                    ProductCategory = product.Category,
+                    CategoryCounts = categoryCounts
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error agregando producto por modelo: {Model}", dto.ModelOrName);
+                return new ScanResponseDto
+                {
+                    Success = false,
+                    Message = $"❌ Error al agregar: {ex.Message}"
+                };
+            }
         }
 
         // Obtener conteos por categoría para un envío específico

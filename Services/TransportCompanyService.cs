@@ -13,7 +13,6 @@ namespace BarcodeShippingSystem.Services
         Task<bool> UpdateAsync(int id, UpdateTransportCompanyDto dto);
         Task<bool> DeleteAsync(int id);
         Task<bool> ToggleStatusAsync(int id);
-        Task<TransportCompanyDto?> SearchByLicensePlateAsync(string plate);
     }
 
     public class TransportCompanyService : ITransportCompanyService
@@ -30,9 +29,7 @@ namespace BarcodeShippingSystem.Services
             var query = _context.TransportCompanies.AsQueryable();
 
             if (activeOnly)
-            {
                 query = query.Where(tc => tc.IsActive);
-            }
 
             return await query
                 .OrderBy(tc => tc.Name)
@@ -40,9 +37,6 @@ namespace BarcodeShippingSystem.Services
                 {
                     Id = tc.Id,
                     Name = tc.Name,
-                    Phone = tc.Phone,
-                    DriverName = tc.DriverName,
-                    LicensePlate = tc.LicensePlate,
                     IsActive = tc.IsActive,
                     CreatedAt = tc.CreatedAt
                 })
@@ -57,9 +51,6 @@ namespace BarcodeShippingSystem.Services
                 {
                     Id = tc.Id,
                     Name = tc.Name,
-                    Phone = tc.Phone,
-                    DriverName = tc.DriverName,
-                    LicensePlate = tc.LicensePlate,
                     IsActive = tc.IsActive,
                     CreatedAt = tc.CreatedAt
                 })
@@ -71,9 +62,6 @@ namespace BarcodeShippingSystem.Services
             var company = new TransportCompany
             {
                 Name = dto.Name,
-                Phone = dto.Phone,
-                DriverName = dto.DriverName,
-                LicensePlate = dto.LicensePlate,
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow
             };
@@ -85,9 +73,6 @@ namespace BarcodeShippingSystem.Services
             {
                 Id = company.Id,
                 Name = company.Name,
-                Phone = company.Phone,
-                DriverName = company.DriverName,
-                LicensePlate = company.LicensePlate,
                 IsActive = company.IsActive,
                 CreatedAt = company.CreatedAt
             };
@@ -100,9 +85,6 @@ namespace BarcodeShippingSystem.Services
             if (company == null) return false;
 
             if (!string.IsNullOrEmpty(dto.Name)) company.Name = dto.Name;
-            if (!string.IsNullOrEmpty(dto.Phone)) company.Phone = dto.Phone;
-            if (!string.IsNullOrEmpty(dto.DriverName)) company.DriverName = dto.DriverName;
-            if (!string.IsNullOrEmpty(dto.LicensePlate)) company.LicensePlate = dto.LicensePlate;
             if (dto.IsActive.HasValue) company.IsActive = dto.IsActive.Value;
 
             await _context.SaveChangesAsync();
@@ -131,23 +113,6 @@ namespace BarcodeShippingSystem.Services
             company.IsActive = !company.IsActive;
             await _context.SaveChangesAsync();
             return true;
-        }
-
-        public async Task<TransportCompanyDto?> SearchByLicensePlateAsync(string plate)
-        {
-            return await _context.TransportCompanies
-                .Where(tc => tc.LicensePlate.Contains(plate) && tc.IsActive)
-                .Select(tc => new TransportCompanyDto
-                {
-                    Id = tc.Id,
-                    Name = tc.Name,
-                    Phone = tc.Phone,
-                    DriverName = tc.DriverName,
-                    LicensePlate = tc.LicensePlate,
-                    IsActive = tc.IsActive,
-                    CreatedAt = tc.CreatedAt
-                })
-                .FirstOrDefaultAsync();
         }
     }
 }

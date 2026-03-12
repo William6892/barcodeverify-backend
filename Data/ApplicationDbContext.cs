@@ -36,10 +36,6 @@ namespace BarcodeShippingSystem.Data
             modelBuilder.Entity<Shipment>()
                 .HasIndex(s => s.ShipmentNumber)
                 .IsUnique();
-
-            modelBuilder.Entity<TransportCompany>()
-                .HasIndex(tc => tc.LicensePlate)
-                .IsUnique();
             modelBuilder.Entity<Product>()
         .HasIndex(p => new { p.SerialNumber, p.ShipmentId })
         .IsUnique()

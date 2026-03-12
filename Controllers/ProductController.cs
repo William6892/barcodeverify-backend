@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
 using BarcodeShippingSystem.DTOs;
@@ -52,6 +52,29 @@ namespace BarcodeShippingSystem.Controllers
             {
                 _logger.LogError(ex, "Error obteniendo producto ID: {Id}", id);
                 return StatusCode(500, new { message = "Error interno del servidor" });
+            }
+        }
+
+        // POST: api/Product/add-by-model
+        [HttpPost("add-by-model")]
+        public async Task<IActionResult> AddProductByModel([FromBody] AddProductByModelDto dto)
+        {
+            try
+            {
+                var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
+                if (userId == 0)
+                    return Unauthorized(new { message = "Usuario no autenticado" });
+
+                var result = await _productService.AddByModelAsync(dto, userId);
+                if (!result.Success)
+                    return BadRequest(new { result.Message });
+
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error agregando producto por modelo: {Model}", dto.ModelOrName);
+                return StatusCode(500, new { message = "Error interno del servidor", error = ex.Message });
             }
         }
 

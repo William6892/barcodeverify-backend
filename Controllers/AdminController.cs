@@ -30,16 +30,13 @@ namespace BarcodeShippingSystem.Controllers
         {
             try
             {
-                // Si no se especifican fechas, usar el mes actual
                 var start = startDate ?? DateTime.UtcNow.Date.AddDays(-30);
                 var end = endDate ?? DateTime.UtcNow.Date.AddDays(1).AddTicks(-1);
 
-                // Estadísticas generales
                 var totalShipments = await _context.Shipments
                     .Where(s => s.CreatedAt >= start && s.CreatedAt <= end)
                     .CountAsync();
 
-                // Total productos escaneados
                 var productsQuery = _context.Products
                     .Where(p => p.ScannedAt >= start && p.ScannedAt <= end);
 
@@ -60,7 +57,6 @@ namespace BarcodeShippingSystem.Controllers
                     {
                         CompanyId = g.Key,
                         CompanyName = g.First().TransportCompany != null ? g.First().TransportCompany.Name : "Desconocida",
-                        DriverName = g.First().TransportCompany != null ? g.First().TransportCompany.DriverName : "Desconocido",
                         ShipmentCount = g.Count(),
                         ProductCount = g.SelectMany(s => s.Products).Sum(p => p.Quantity)
                     })
@@ -79,7 +75,7 @@ namespace BarcodeShippingSystem.Controllers
                         Username = g.First().User != null ? g.First().User.Username : "Desconocido",
                         Email = g.First().User != null ? g.First().User.Email : "",
                         ScanCount = g.Count(),
-                        TotalProductsScanned = g.Sum(so => so.ProductCount), 
+                        TotalProductsScanned = g.Sum(so => so.ProductCount),
                         LastScan = g.Max(so => so.StartTime)
                     })
                     .OrderByDescending(x => x.TotalProductsScanned)
@@ -123,7 +119,7 @@ namespace BarcodeShippingSystem.Controllers
                     {
                         Date = g.Key,
                         ScanOperations = g.Count(),
-                        ProductsScanned = g.Sum(so => so.ProductCount) // CORREGIDO
+                        ProductsScanned = g.Sum(so => so.ProductCount)
                     })
                     .OrderBy(x => x.Date)
                     .ToListAsync();
@@ -173,7 +169,7 @@ namespace BarcodeShippingSystem.Controllers
                         TotalScans = _context.ScanOperations.Count(so => so.UserId == u.Id),
                         TotalProductsScanned = _context.ScanOperations
                             .Where(so => so.UserId == u.Id)
-                            .Sum(so => so.ProductCount) // CORREGIDO
+                            .Sum(so => so.ProductCount)
                     })
                     .OrderByDescending(u => u.CreatedAt)
                     .ToListAsync();
@@ -186,45 +182,43 @@ namespace BarcodeShippingSystem.Controllers
             }
         }
 
-            [HttpPost("users")]
-            public async Task<IActionResult> CreateUser([FromBody] CreateUserDto dto)
+        [HttpPost("users")]
+        public async Task<IActionResult> CreateUser([FromBody] CreateUserDto dto)
+        {
+            try
             {
-                try
+                if (await _context.Users.AnyAsync(u => u.Username == dto.Username))
+                    return BadRequest(new { message = "El nombre de usuario ya existe" });
+
+                if (await _context.Users.AnyAsync(u => u.Email == dto.Email))
+                    return BadRequest(new { message = "El email ya está registrado" });
+
+                var passwordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
+
+                var user = new User
                 {
-                    // Verificar si el usuario ya existe
-                    if (await _context.Users.AnyAsync(u => u.Username == dto.Username))
-                        return BadRequest(new { message = "El nombre de usuario ya existe" });
+                    Username = dto.Username,
+                    Email = dto.Email,
+                    PasswordHash = passwordHash,
+                    Role = dto.Role,
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow
+                };
 
-                    if (await _context.Users.AnyAsync(u => u.Email == dto.Email))
-                        return BadRequest(new { message = "El email ya está registrado" });
+                _context.Users.Add(user);
+                await _context.SaveChangesAsync();
 
-                    // Crear hash de la contraseña
-                    var passwordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
-
-                    var user = new User
-                    {
-                        Username = dto.Username,
-                        Email = dto.Email,
-                        PasswordHash = passwordHash,
-                        Role = dto.Role,
-                        IsActive = true,
-                        CreatedAt = DateTime.UtcNow
-                    };
-
-                    _context.Users.Add(user);
-                    await _context.SaveChangesAsync();
-
-                    return Ok(new
-                    {
-                        message = "Usuario creado exitosamente",
-                        user = new { user.Id, user.Username, user.Email, user.Role }
-                    });
-                }
-                catch (Exception ex)
+                return Ok(new
                 {
-                    return StatusCode(500, new { message = "Error al crear usuario", error = ex.Message });
-                }
+                    message = "Usuario creado exitosamente",
+                    user = new { user.Id, user.Username, user.Email, user.Role }
+                });
             }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error al crear usuario", error = ex.Message });
+            }
+        }
 
         [HttpPut("users/{id}/role")]
         public async Task<IActionResult> UpdateUserRole(int id, [FromBody] UpdateUserRoleDto dto)
@@ -280,9 +274,6 @@ namespace BarcodeShippingSystem.Controllers
                     {
                         tc.Id,
                         tc.Name,
-                        tc.DriverName,
-                        tc.LicensePlate,
-                        tc.Phone,
                         tc.IsActive,
                         tc.CreatedAt,
                         TotalShipments = _context.Shipments.Count(s => s.TransportCompanyId == tc.Id),
@@ -307,15 +298,12 @@ namespace BarcodeShippingSystem.Controllers
         {
             try
             {
-                if (await _context.TransportCompanies.AnyAsync(tc => tc.LicensePlate == dto.LicensePlate))
-                    return BadRequest(new { message = "Ya existe una transportadora con esta placa" });
+                if (await _context.TransportCompanies.AnyAsync(tc => tc.Name.ToLower() == dto.Name.ToLower()))
+                    return BadRequest(new { message = "Ya existe una transportadora con este nombre" });
 
                 var company = new TransportCompany
                 {
                     Name = dto.Name,
-                    DriverName = dto.DriverName,
-                    LicensePlate = dto.LicensePlate,
-                    Phone = dto.Phone,
                     IsActive = true,
                     CreatedAt = DateTime.UtcNow
                 };
@@ -326,7 +314,7 @@ namespace BarcodeShippingSystem.Controllers
                 return Ok(new
                 {
                     message = "Transportadora creada exitosamente",
-                    company = new { company.Id, company.Name, company.DriverName, company.LicensePlate }
+                    company = new { company.Id, company.Name }
                 });
             }
             catch (Exception ex)
@@ -357,7 +345,6 @@ namespace BarcodeShippingSystem.Controllers
                     .Include(p => p.ScannedByUser)
                     .AsQueryable();
 
-                // Filtros
                 if (!string.IsNullOrEmpty(barcode))
                     query = query.Where(p => p.Barcode.Contains(barcode));
 
@@ -373,7 +360,6 @@ namespace BarcodeShippingSystem.Controllers
                 if (endDate.HasValue)
                     query = query.Where(p => p.ScannedAt <= endDate.Value.AddDays(1).AddTicks(-1));
 
-                // Paginación
                 var totalCount = await query.CountAsync();
                 var products = await query
                     .OrderByDescending(p => p.ScannedAt)
@@ -404,8 +390,7 @@ namespace BarcodeShippingSystem.Controllers
                             p.Shipment.Status,
                             TransportCompany = p.Shipment.TransportCompany != null ? new
                             {
-                                p.Shipment.TransportCompany.Name,
-                                p.Shipment.TransportCompany.DriverName
+                                p.Shipment.TransportCompany.Name
                             } : null
                         } : null
                     })
@@ -453,9 +438,7 @@ namespace BarcodeShippingSystem.Controllers
                         s.ActualDeparture,
                         TransportCompany = s.TransportCompany != null ? new
                         {
-                            s.TransportCompany.Name,
-                            s.TransportCompany.DriverName,
-                            s.TransportCompany.LicensePlate
+                            s.TransportCompany.Name
                         } : null,
                         TotalProducts = s.Products.Sum(p => p.Quantity),
                         Products = s.Products.Select(p => new

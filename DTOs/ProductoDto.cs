@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace BarcodeShippingSystem.DTOs
 {
@@ -191,5 +191,26 @@ namespace BarcodeShippingSystem.DTOs
         [Required(ErrorMessage = "El ID del envío es requerido")]
         [Range(1, int.MaxValue, ErrorMessage = "El ID del envío debe ser válido")]
         public int ShipmentId { get; set; }
+    }
+
+    /// <summary>
+    /// DTO para agregar productos por modelo/cantidad sin escanear.
+    /// Ejemplo: "10 Samsung S26 Ultra", "10 audífonos"
+    /// </summary>
+    public class AddProductByModelDto
+    {
+        [Required(ErrorMessage = "El ID del envío es requerido")]
+        [Range(1, int.MaxValue, ErrorMessage = "El ID del envío debe ser válido")]
+        public int ShipmentId { get; set; }
+
+        [Required(ErrorMessage = "El modelo o nombre del producto es requerido")]
+        [StringLength(200, MinimumLength = 2, ErrorMessage = "El modelo/nombre debe tener entre 2 y 200 caracteres")]
+        public string ModelOrName { get; set; } = string.Empty;
+
+        [Range(1, 999, ErrorMessage = "La cantidad debe estar entre 1 y 999")]
+        public int Quantity { get; set; } = 1;
+
+        [StringLength(100, ErrorMessage = "La categoría no puede exceder los 100 caracteres")]
+        public string? Category { get; set; }
     }
 }
