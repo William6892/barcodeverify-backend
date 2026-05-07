@@ -14,6 +14,8 @@ namespace BarcodeShippingSystem.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         // Relaciones
-        public ICollection<Shipment> Shipments { get; set; } = new List<Shipment>();
+        public ICollection<Shipment> Shipments { get; set; } = new List<Shipment>();        
+        public virtual ICollection<Driver> Drivers { get; set; } = new List<Driver>();
+        public virtual ICollection<Vehicle> Vehicles { get; set; } = new List<Vehicle>();
     }
 }

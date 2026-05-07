@@ -1,4 +1,6 @@
-﻿namespace BarcodeShippingSystem.DTOs
+﻿using BarcodeShippingSystem.Models;
+
+namespace BarcodeShippingSystem.DTOs
 {
     public class BarcodeShippingSystem
     {
@@ -20,5 +22,8 @@
             public string Email { get; set; } = string.Empty;
             public string Role { get; set; } = string.Empty;
         }
+        public virtual ICollection<Shipment> Shipments { get; set; } = new List<Shipment>();
+        public virtual ICollection<Product> ScannedProducts { get; set; } = new List<Product>();
+        public virtual ICollection<ScanOperation> ScanOperations { get; set; } = new List<ScanOperation>();
     }
 }

@@ -19,7 +19,7 @@ namespace BarcodeShippingSystem.Models
 
         [Required]
         [StringLength(50)]
-        public string Role { get; set; } = "User"; // Admin, User
+        public string Role { get; set; } = "User";
 
         public bool IsActive { get; set; } = true;
 
@@ -27,7 +27,10 @@ namespace BarcodeShippingSystem.Models
 
         public DateTime? LastLogin { get; set; }
 
-        // Relaciones
+        // ✅ RELACIONES CORRECTAS
+        public ICollection<Shipment> Shipments { get; set; } = new List<Shipment>();
+        public ICollection<Product> ScannedProducts { get; set; } = new List<Product>();
         public ICollection<ScanOperation> ScanOperations { get; set; } = new List<ScanOperation>();
+        
     }
 }
