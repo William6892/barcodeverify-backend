@@ -8,25 +8,29 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ¡¡¡SOLUCIÓN PARA POSTGRESQL!!! 
+// Solución para PostgreSQL
 AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
+
+// ========== CONFIGURAR CORS (ANTES DE TODO) ==========
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
+    {
+        policy.WithOrigins(
+                "https://barcodeverify-frontend.onrender.com",
+                "http://localhost:5173",
+                "http://localhost:5034"
+            )
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials();  // Para enviar tokens
+    });
+});
 
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
-
-// Configure CORS
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowAll",
-        policy =>
-        {
-            policy.AllowAnyOrigin()
-                  .AllowAnyMethod()
-                  .AllowAnyHeader();
-        });
-});
 
 // ========== CONEXIÓN A BD ==========
 var connectionString = Environment.GetEnvironmentVariable("DATABASE_URL");
@@ -51,6 +55,10 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddScoped<IProductService, ProductService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<ITransportCompanyService, TransportCompanyService>();
+builder.Services.AddScoped<IShipmentService, ShipmentService>();
+builder.Services.AddScoped<IDriverService, DriverService>();
+builder.Services.AddScoped<IVehicleService, VehicleService>();
+builder.Services.AddScoped<IAdminService, AdminService>();
 
 // ========== CONFIGURAR JWT ==========
 var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY")
@@ -90,42 +98,6 @@ builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
-// ========== DIAGNÓSTICO: VER CONTROLLERS ==========
-Console.WriteLine("\n🔍 BUSCANDO CONTROLLERS...");
-try
-{
-    var controllerTypes = AppDomain.CurrentDomain.GetAssemblies()
-        .SelectMany(a => a.GetTypes())
-        .Where(t =>
-            t != null &&
-            !t.IsAbstract &&
-            t.IsClass &&
-            (typeof(ControllerBase).IsAssignableFrom(t) ||
-             (t.Name.EndsWith("Controller") && t.IsSubclassOf(typeof(ControllerBase))))
-        )
-        .ToList();
-
-    Console.WriteLine($"📋 Controllers encontrados ({controllerTypes.Count}):");
-    foreach (var type in controllerTypes)
-    {
-        Console.WriteLine($"  ✅ {type.Name} ({type.FullName})");
-    }
-
-    if (controllerTypes.Count == 0)
-    {
-        Console.WriteLine("❌ NO SE ENCONTRARON CONTROLLERS!");
-        Console.WriteLine("🔍 Assemblies cargadas:");
-        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-        {
-            Console.WriteLine($"  - {assembly.FullName}");
-        }
-    }
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"❌ Error buscando controllers: {ex.Message}");
-}
-
 // ========== CONFIGURAR PIPELINE ==========
 if (app.Environment.IsDevelopment())
 {
@@ -142,42 +114,17 @@ else
     app.UseHttpsRedirection();
 }
 
-app.UseCors("AllowAll");
+// ✅ EL ORDEN IMPORTA: CORS va ANTES de Authentication
+app.UseCors("AllowFrontend");
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
 
-// ========== ENDPOINTS DE PRUEBA DIRECTOS ==========
-// Endpoint de prueba SIN controller (para diagnóstico)
-app.MapGet("/api/test-direct", () =>
-{
-    return Results.Ok(new
-    {
-        message = "✅ Endpoint directo funciona",
-        time = DateTime.UtcNow,
-        environment = app.Environment.EnvironmentName
-    });
-});
-
-// Endpoint de prueba de shipments SIN controller
-app.MapGet("/api/test-shipments", () =>
-{
-    return Results.Ok(new
-    {
-        message = "✅ Endpoint de shipments directo",
-        shipments = new[]
-        {
-            new { id = 1, number = "TEST001", status = "Pending" },
-            new { id = 2, number = "TEST002", status = "InProgress" }
-        }
-    });
-}).RequireAuthorization();
-
-// Health check endpoint
+// ========== HEALTH CHECKS ==========
 app.MapHealthChecks("/health");
 
-// Root endpoint
+// ========== ROOT ENDPOINT ==========
 app.MapGet("/", () =>
 {
     var env = app.Environment.EnvironmentName;
@@ -191,12 +138,16 @@ app.MapGet("/", () =>
         endpoints = new[]
         {
             "/api/auth/login",
-            "/api/test-direct",
-            "/api/test-shipments",
+            "/api/auth/register",
+            "/api/shipment",
+            "/api/driver",
+            "/api/vehicle",
             "/health"
         }
     });
 });
+
+app.Run();
 
 // ========== FUNCIONES AUXILIARES ==========
 static string ConvertPostgresUrlToConnectionString(string url)
@@ -242,6 +193,3 @@ static string MaskPassword(string connectionString)
         return "[Connection string masked]";
     }
 }
-
-Console.WriteLine("\n🚀 APLICACIÓN INICIANDO...");
-app.Run();
