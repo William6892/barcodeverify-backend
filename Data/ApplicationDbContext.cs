@@ -17,6 +17,8 @@ namespace BarcodeShippingSystem.Data
         public DbSet<ScanOperation> ScanOperations { get; set; }
         public DbSet<Driver> Drivers { get; set; }
         public DbSet<Vehicle> Vehicles { get; set; }
+        public DbSet<DriverTransportCompany> DriverTransportCompanies { get; set; }
+        public DbSet<VehicleTransportCompany> VehicleTransportCompanies { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -91,11 +93,6 @@ namespace BarcodeShippingSystem.Data
                 entity.Property(d => d.CreatedAt)
                     .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-                entity.HasOne(d => d.TransportCompany)
-                    .WithMany(tc => tc.Drivers)
-                    .HasForeignKey(d => d.TransportCompanyId)
-                    .OnDelete(DeleteBehavior.Restrict);
-
                 entity.HasIndex(d => d.IdentificationNumber)
                     .IsUnique()
                     .HasFilter("\"IsActive\" = true");
@@ -121,11 +118,6 @@ namespace BarcodeShippingSystem.Data
 
                 entity.Property(v => v.CreatedAt)
                     .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-                entity.HasOne(v => v.TransportCompany)
-                    .WithMany(tc => tc.Vehicles)
-                    .HasForeignKey(v => v.TransportCompanyId)
-                    .OnDelete(DeleteBehavior.Restrict);
 
                 entity.HasIndex(v => v.PlateNumber)
                     .IsUnique()
@@ -267,6 +259,44 @@ namespace BarcodeShippingSystem.Data
 
                 entity.HasIndex(so => so.Status);
                 entity.HasIndex(so => so.StartTime);
+            });
+
+            // Configuración de DriverTransportCompany
+            modelBuilder.Entity<DriverTransportCompany>(entity =>
+            {
+                entity.HasKey(dtc => dtc.Id);
+
+                entity.HasOne(dtc => dtc.Driver)
+                    .WithMany(d => d.DriverTransportCompanies)
+                    .HasForeignKey(dtc => dtc.DriverId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(dtc => dtc.TransportCompany)
+                    .WithMany(tc => tc.DriverTransportCompanies)
+                    .HasForeignKey(dtc => dtc.TransportCompanyId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(dtc => new { dtc.DriverId, dtc.TransportCompanyId })
+                    .IsUnique();
+            });
+
+            // Configuración de VehicleTransportCompany
+            modelBuilder.Entity<VehicleTransportCompany>(entity =>
+            {
+                entity.HasKey(vtc => vtc.Id);
+
+                entity.HasOne(vtc => vtc.Vehicle)
+                    .WithMany(v => v.VehicleTransportCompanies)
+                    .HasForeignKey(vtc => vtc.VehicleId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(vtc => vtc.TransportCompany)
+                    .WithMany(tc => tc.VehicleTransportCompanies)
+                    .HasForeignKey(vtc => vtc.TransportCompanyId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(vtc => new { vtc.VehicleId, vtc.TransportCompanyId })
+                    .IsUnique();
             });
         }
     }

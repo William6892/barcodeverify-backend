@@ -1,5 +1,4 @@
-﻿// Services/ShipmentService.cs - Usando TUS DTOs
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using BarcodeShippingSystem.Data;
 using BarcodeShippingSystem.Models;
 using BarcodeShippingSystem.DTOs;
@@ -24,21 +23,31 @@ namespace BarcodeShippingSystem.Services
             if (transportCompany == null)
                 throw new Exception("Transportadora no encontrada");
 
-            // Validar conductor
-            var driver = await _context.Drivers
-                .FirstOrDefaultAsync(d => d.Id == dto.DriverId &&
-                                          d.TransportCompanyId == dto.TransportCompanyId &&
-                                          d.IsActive);
-            if (driver == null)
-                throw new Exception("Conductor no válido para esta transportadora");
+            // ✅ Validar conductor (tabla puente - muchos a muchos)
+            var driverLink = await _context.DriverTransportCompanies
+                .FirstOrDefaultAsync(dtc => dtc.DriverId == dto.DriverId &&
+                                            dtc.TransportCompanyId == dto.TransportCompanyId &&
+                                            dtc.IsActive);
 
-            // Validar vehículo
-            var vehicle = await _context.Vehicles
-                .FirstOrDefaultAsync(v => v.Id == dto.VehicleId &&
-                                          v.TransportCompanyId == dto.TransportCompanyId &&
-                                          v.IsActive);
+            if (driverLink == null)
+                throw new Exception("El conductor no está vinculado a esta transportadora");
+
+            var driver = await _context.Drivers.FindAsync(dto.DriverId);
+            if (driver == null)
+                throw new Exception("Conductor no encontrado");
+
+            // ✅ Validar vehículo (tabla puente - muchos a muchos)
+            var vehicleLink = await _context.VehicleTransportCompanies
+                .FirstOrDefaultAsync(vtc => vtc.VehicleId == dto.VehicleId &&
+                                            vtc.TransportCompanyId == dto.TransportCompanyId &&
+                                            vtc.IsActive);
+
+            if (vehicleLink == null)
+                throw new Exception("El vehículo no está vinculado a esta transportadora");
+
+            var vehicle = await _context.Vehicles.FindAsync(dto.VehicleId);
             if (vehicle == null)
-                throw new Exception("Vehículo no válido para esta transportadora");
+                throw new Exception("Vehículo no encontrado");
 
             // Verificar vehículo no tenga envíos activos
             var hasActiveShipment = await _context.Shipments
@@ -64,7 +73,7 @@ namespace BarcodeShippingSystem.Services
             _context.Shipments.Add(shipment);
             await _context.SaveChangesAsync();
 
-            // Retornar TU DTO
+            // Retornar DTO
             return new ShipmentResponseDto
             {
                 Id = shipment.Id,
@@ -108,7 +117,6 @@ namespace BarcodeShippingSystem.Services
             if (shipment == null)
                 throw new Exception("Envío no encontrado");
 
-            // Retornar TU DTO exactamente como lo defines
             return new ShipmentResponseDto
             {
                 Id = shipment.Id,
@@ -143,17 +151,11 @@ namespace BarcodeShippingSystem.Services
                 CreatedBy = shipment.CreatedBy != null ? new UserDto
                 {
                     Id = shipment.CreatedBy.Id,
-                    Username = shipment.CreatedBy.Username                 
+                    Username = shipment.CreatedBy.Username
                 } : null
             };
         }
 
-        private string GenerateShipmentNumber()
-        {
-            return $"SH{DateTime.UtcNow:yyyyMMddHHmmss}{new Random().Next(1000, 9999)}";
-        }
-
-        // Implementar los demás métodos...
         public async Task<object> StartShipmentAsync(StartShipmentDto dto, int userId)
         {
             var shipment = await _context.Shipments
@@ -479,6 +481,11 @@ namespace BarcodeShippingSystem.Services
                 shipmentNumber = shipment.ShipmentNumber,
                 cancelledAt = DateTime.UtcNow
             };
+        }
+
+        private string GenerateShipmentNumber()
+        {
+            return $"SH{DateTime.UtcNow:yyyyMMddHHmmss}{new Random().Next(1000, 9999)}";
         }
     }
 }

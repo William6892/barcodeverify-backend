@@ -10,23 +10,21 @@ namespace BarcodeShippingSystem.Models
 
         [Required(ErrorMessage = "La placa del vehículo es requerida")]
         [StringLength(20)]
-        public string PlateNumber { get; set; } = string.Empty; // Placa principal
+        public string PlateNumber { get; set; } = string.Empty;
 
         [StringLength(20)]
-        public string? TrailerPlate { get; set; } // Placa del trailer (si aplica)
+        public string? TrailerPlate { get; set; }
 
         [StringLength(30)]
-        public string? VehicleType { get; set; } // "Furgón", "Mula", "Camión", "Trailer", etc.
-
-        public int TransportCompanyId { get; set; }
-
-        [ForeignKey("TransportCompanyId")]
-        public virtual TransportCompany TransportCompany { get; set; } = null!;
+        public string? VehicleType { get; set; }
 
         public bool IsActive { get; set; } = true;
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }
+
+        // ✅ Relación muchos a muchos (tabla puente)
+        public virtual ICollection<VehicleTransportCompany> VehicleTransportCompanies { get; set; } = new List<VehicleTransportCompany>();
 
         // Relación con envíos
         public virtual ICollection<Shipment> Shipments { get; set; } = new List<Shipment>();
