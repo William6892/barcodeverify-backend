@@ -20,6 +20,9 @@ namespace BarcodeShippingSystem.Data
         public DbSet<DriverTransportCompany> DriverTransportCompanies { get; set; }
         public DbSet<VehicleTransportCompany> VehicleTransportCompanies { get; set; }
 
+        // ✅ NUEVO: DbSet para InventoryTransaction
+        public DbSet<InventoryTransaction> InventoryTransactions { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -51,7 +54,6 @@ namespace BarcodeShippingSystem.Data
                 entity.Property(u => u.CreatedAt)
                     .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-                // ❌ ELIMINADA la configuración de CompletedShipments
                 entity.HasIndex(u => u.Username).IsUnique();
                 entity.HasIndex(u => u.Email).IsUnique();
             });
@@ -164,8 +166,6 @@ namespace BarcodeShippingSystem.Data
                     .HasForeignKey(s => s.CreatedByUserId)
                     .OnDelete(DeleteBehavior.Restrict);
 
-                // ❌ ELIMINADA la configuración de CompletedBy
-
                 entity.HasIndex(s => s.ShipmentNumber).IsUnique();
                 entity.HasIndex(s => s.Status);
                 entity.HasIndex(s => s.CreatedAt);
@@ -261,7 +261,7 @@ namespace BarcodeShippingSystem.Data
                 entity.HasIndex(so => so.StartTime);
             });
 
-            // Configuración de DriverTransportCompany
+            // ==================== DRIVER TRANSPORT COMPANY ====================
             modelBuilder.Entity<DriverTransportCompany>(entity =>
             {
                 entity.HasKey(dtc => dtc.Id);
@@ -280,7 +280,7 @@ namespace BarcodeShippingSystem.Data
                     .IsUnique();
             });
 
-            // Configuración de VehicleTransportCompany
+            // ==================== VEHICLE TRANSPORT COMPANY ====================
             modelBuilder.Entity<VehicleTransportCompany>(entity =>
             {
                 entity.HasKey(vtc => vtc.Id);
@@ -297,6 +297,44 @@ namespace BarcodeShippingSystem.Data
 
                 entity.HasIndex(vtc => new { vtc.VehicleId, vtc.TransportCompanyId })
                     .IsUnique();
+            });
+
+            // ==================== INVENTORY TRANSACTION (NUEVO) ====================
+            modelBuilder.Entity<InventoryTransaction>(entity =>
+            {
+                entity.HasKey(it => it.Id);
+
+                entity.Property(it => it.ProductId)
+                    .IsRequired();
+
+                entity.Property(it => it.Type)
+                    .IsRequired()
+                    .HasMaxLength(10);
+
+                entity.Property(it => it.Quantity)
+                    .IsRequired();
+
+                entity.Property(it => it.CreatedAt)
+                    .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                entity.Property(it => it.ReferenceType)
+                    .HasMaxLength(50);
+
+                entity.Property(it => it.Notes)
+                    .HasMaxLength(500);
+
+                // Relación con Product
+                entity.HasOne(it => it.Product)
+                    .WithMany()
+                    .HasForeignKey(it => it.ProductId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                // Índices para búsquedas rápidas
+                entity.HasIndex(it => it.ProductId);
+                entity.HasIndex(it => it.Type);
+                entity.HasIndex(it => it.CreatedAt);
+                entity.HasIndex(it => new { it.ProductId, it.CreatedAt });
+                entity.HasIndex(it => new { it.ReferenceType, it.ReferenceId });
             });
         }
     }

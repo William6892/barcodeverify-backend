@@ -12,11 +12,16 @@ namespace BarcodeShippingSystem.Controllers
     public class ProductController : ControllerBase
     {
         private readonly IProductService _productService;
+        private readonly IInventoryService _inventoryService;
         private readonly ILogger<ProductController> _logger;
 
-        public ProductController(IProductService productService, ILogger<ProductController> logger)
+        public ProductController(
+            IProductService productService,
+            IInventoryService inventoryService,
+            ILogger<ProductController> logger)
         {
             _productService = productService;
+            _inventoryService = inventoryService;
             _logger = logger;
         }
 
@@ -84,7 +89,6 @@ namespace BarcodeShippingSystem.Controllers
         {
             try
             {
-                // Obtener userId del token JWT
                 var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
 
                 if (userId == 0)
@@ -251,11 +255,9 @@ namespace BarcodeShippingSystem.Controllers
             }
         }
 
-
-        // ✅ AGREGAR ESTE MÉTODO NUEVO al final del ProductController
         // POST: api/Product/create-for-shipment
         [HttpPost("create-for-shipment")]
-        [Authorize] // Solo requiere autenticación, no rol Admin
+        [Authorize]
         public async Task<IActionResult> CreateProductForShipment([FromBody] CreateProductForShipmentDto dto)
         {
             try
@@ -263,43 +265,28 @@ namespace BarcodeShippingSystem.Controllers
                 var userId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0");
 
                 if (userId == 0)
-                    return Unauthorized(new
-                    {
-                        success = false,
-                        message = "Usuario no autenticado"
-                    });
+                    return Unauthorized(new { success = false, message = "Usuario no autenticado" });
 
-                // Validar si ya existe el producto en este envío
                 var existingProducts = await _productService.GetProductsByShipmentAsync(dto.ShipmentId);
                 var existingProduct = existingProducts.FirstOrDefault(p => p.Barcode == dto.Barcode);
 
                 if (existingProduct != null)
                 {
-                    return Conflict(new
-                    {
-                        success = false,
-                        message = $"El producto {dto.Barcode} ya existe en este envío"
-                    });
+                    return Conflict(new { success = false, message = $"El producto {dto.Barcode} ya existe en este envío" });
                 }
 
-                // Crear el DTO para el servicio
                 var createDto = new CreateProductDto
                 {
                     Barcode = dto.Barcode,
                     Name = dto.Name,
                     Quantity = dto.Quantity,
                     Category = dto.Category ?? "General",
-                    SKU = $"SHIP-{dto.ShipmentId}-{dto.Barcode}", // SKU generado automáticamente
+                    SKU = $"SHIP-{dto.ShipmentId}-{dto.Barcode}",
                     Description = $"Producto agregado al envío {dto.ShipmentId}",
-                    Brand = "General" // Valor por defecto
+                    Brand = "General"
                 };
 
-                // Llamar al servicio para crear el producto
                 var product = await _productService.CreateAsync(createDto, userId);
-
-                // Asociar el producto al envío si es necesario
-                // Esto depende de cómo esté implementado tu servicio
-                // Puede que necesites un método adicional como _productService.AssignToShipmentAsync(product.Id, dto.ShipmentId);
 
                 return Ok(new
                 {
@@ -319,25 +306,75 @@ namespace BarcodeShippingSystem.Controllers
             }
             catch (InvalidOperationException ex)
             {
-                return Conflict(new
+                return Conflict(new { success = false, message = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creando producto para envío. Barcode: {Barcode}, ShipmentId: {ShipmentId}", dto.Barcode, dto.ShipmentId);
+                return StatusCode(500, new { success = false, message = "Error interno del servidor al crear producto", error = ex.Message });
+            }
+        }
+
+        // ==================== ENDPOINTS DE INVENTARIO SIMPLES ====================
+
+        // GET: api/Product/stock/today - 📱 LO QUE VES DESDE TU CASA
+        [HttpGet("stock/today")]
+        public async Task<IActionResult> GetTodayStock()
+        {
+            try
+            {
+                var today = DateTime.UtcNow.Date;
+                var stockSummary = await _inventoryService.GetDailyStockSummaryAsync(today);
+
+                return Ok(new
                 {
-                    success = false,
-                    message = ex.Message
+                    fecha = today.ToString("yyyy-MM-dd"),
+                    productos = stockSummary.Select(s => new
+                    {
+                        s.ProductId,
+                        s.ProductName,
+                        inicial = s.InitialStock,
+                        salieron = s.ShippedToday,
+                        actual = s.CurrentStock
+                    }),
+                    resumen = new
+                    {
+                        total_productos = stockSummary.Count,
+                        total_salidas = stockSummary.Sum(s => s.ShippedToday),
+                        productos_agotados = stockSummary.Count(s => s.CurrentStock == 0),
+                        stock_bajo = stockSummary.Count(s => s.CurrentStock > 0 && s.CurrentStock < 10)
+                    }
                 });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error creando producto para envío. Barcode: {Barcode}, ShipmentId: {ShipmentId}",
-                    dto.Barcode, dto.ShipmentId);
-
-                return StatusCode(500, new
-                {
-                    success = false,
-                    message = "Error interno del servidor al crear producto",
-                    error = ex.Message
-                });
+                _logger.LogError(ex, "Error obteniendo stock del día");
+                return StatusCode(500, new { message = "Error interno del servidor" });
             }
         }
 
+        // GET: api/Product/stock/{id} - Stock de un producto específico
+        [HttpGet("stock/{id}")]
+        public async Task<IActionResult> GetProductStock(int id)
+        {
+            try
+            {
+                var stock = await _inventoryService.GetCurrentStockAsync(id);
+                var product = await _productService.GetByIdAsync(id);
+
+                return Ok(new
+                {
+                    productId = id,
+                    productName = product?.Name,
+                    currentStock = stock,
+                    lastUpdated = DateTime.UtcNow
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error obteniendo stock del producto {Id}", id);
+                return StatusCode(500, new { message = "Error interno del servidor" });
+            }
+        }
     }
 }

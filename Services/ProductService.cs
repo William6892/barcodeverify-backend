@@ -11,11 +11,14 @@ namespace BarcodeShippingSystem.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly ILogger<ProductService> _logger;
+        private readonly IServiceProvider _serviceProvider; // ✅ Agregar esto
 
-        public ProductService(ApplicationDbContext context, ILogger<ProductService> logger)
+        // ✅ Modificar el constructor
+        public ProductService(ApplicationDbContext context, ILogger<ProductService> logger, IServiceProvider serviceProvider)
         {
             _context = context;
             _logger = logger;
+            _serviceProvider = serviceProvider;
         }
 
         // ============== MÉTODOS IMPLEMENTADOS ==============
@@ -102,7 +105,7 @@ namespace BarcodeShippingSystem.Services
                         SKU = scanDto.SKU?.Trim() ?? GenerateSku(scanDto.Barcode),
                         Quantity = scanDto.Quantity,
                         Category = scanDto.Category?.Trim() ?? "Electrónica",
-                        Brand = "Samsung", // Siempre Samsung según tu modelo
+                        Brand = "Samsung",
                         Model = scanDto.Model?.Trim(),
                         SerialNumber = scanDto.SerialNumber?.Trim(),
                         ShipmentId = scanDto.ShipmentId,
@@ -124,6 +127,9 @@ namespace BarcodeShippingSystem.Services
                 }
 
                 await _context.SaveChangesAsync();
+
+                // ✅ ✅ ✅ AGREGAR AQUÍ EL REGISTRO DE INVENTARIO (después de guardar)
+                await RegisterInventoryExit(product.Id, scanDto.Quantity, scanDto.ShipmentId, userId, product.Name);
 
                 // 4. Obtener estadísticas actualizadas
                 var shipmentProductCount = await _context.Products
@@ -170,6 +176,32 @@ namespace BarcodeShippingSystem.Services
                     Success = false,
                     Message = $"❌ Error al procesar el escaneo: {ex.Message}"
                 };
+            }
+        }
+
+        // ✅ NUEVO: Método auxiliar para registrar salida de inventario
+        private async Task RegisterInventoryExit(int productId, int quantity, int shipmentId, int userId, string productName)
+        {
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var inventoryService = scope.ServiceProvider.GetRequiredService<IInventoryService>();
+
+                await inventoryService.RecordExitAsync(
+                    productId: productId,
+                    quantity: quantity,
+                    referenceId: shipmentId,
+                    referenceType: "Shipment",
+                    userId: userId,
+                    notes: $"Escaneo por operario - {productName}"
+                );
+
+                _logger.LogInformation("Inventario actualizado: Producto {ProductId}, salida {Quantity} unidades", productId, quantity);
+            }
+            catch (Exception ex)
+            {
+                // ✅ Esto es importante: NO falla el escaneo si el inventario falla
+                _logger.LogWarning(ex, "Error registrando transacción de inventario (no crítico) para producto {ProductId}", productId);
             }
         }
 
@@ -255,7 +287,7 @@ namespace BarcodeShippingSystem.Services
                 query = query.Where(p => p.SerialNumber != null && p.SerialNumber.Contains(searchDto.SerialNumber));
 
             if (searchDto.ShipmentId.HasValue)
-                query = query.Where(p => p.ShipmentId == searchDto.ShipmentId);
+                query = query.Where(p => p.ShipmentId == searchDto.ShipmentId.Value);
 
             if (searchDto.StartDate.HasValue)
                 query = query.Where(p => p.ScannedAt >= searchDto.StartDate.Value);
@@ -333,7 +365,28 @@ namespace BarcodeShippingSystem.Services
 
             _logger.LogInformation("Producto creado: {Barcode} - {Name}", product.Barcode, product.Name);
 
+            // ✅ Inicializar inventario para este producto nuevo
+            await InitializeInventoryForProduct(product.Id, dto.Quantity, userId ?? 0);
+
             return await GetByIdAsync(product.Id) ?? throw new Exception("Error al obtener producto creado");
+        }
+
+        // ✅ NUEVO: Inicializar inventario para producto nuevo
+        private async Task InitializeInventoryForProduct(int productId, int initialStock, int userId)
+        {
+            try
+            {
+                using var scope = _serviceProvider.CreateScope();
+                var inventoryService = scope.ServiceProvider.GetRequiredService<IInventoryService>();
+
+                await inventoryService.InitializeInventoryAsync(productId, initialStock, userId);
+
+                _logger.LogInformation("Inventario inicializado para producto {ProductId} con {Stock} unidades", productId, initialStock);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error inicializando inventario para producto {ProductId}", productId);
+            }
         }
 
         // Actualizar producto
@@ -575,6 +628,9 @@ namespace BarcodeShippingSystem.Services
                 }
 
                 await _context.SaveChangesAsync();
+
+                // ✅ Registrar salida de inventario también para productos agregados por modelo
+                await RegisterInventoryExit(product.Id, dto.Quantity, dto.ShipmentId, userId, product.Name);
 
                 var shipmentProductCount = await _context.Products
                     .Where(p => p.ShipmentId == dto.ShipmentId)
